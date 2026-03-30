@@ -56,7 +56,8 @@ const HEADERS = {
   "Referer": "https://map.naver.com/",
 };
 
-async function searchPlaces(keyword: string, start: number = 1, display: number = 50): Promise<any[]> {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function searchPlaces(keyword: string, start: number = 1, display: number = 50): Promise<Record<string, any>[]> {
   try {
     const url = `https://map.naver.com/p/api/search/allSearch?query=${encodeURIComponent(keyword)}&type=all&searchCoord=126.9783882%3B37.5666103&page=${start}&displayCount=${display}&isPlaceRecommendationReplace=true&lang=ko`;
 

@@ -1,17 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
-import { crawlBusinesses } from "@/lib/crawler";
+import { crawlLite } from "@/lib/crawler-lite";
 import { getServiceClient } from "@/lib/supabase";
 import { classifyBusiness } from "@/lib/claude";
 
-export const maxDuration = 300;
+export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => ({}));
-    const keywords = body.keywords as string[] | undefined;
-    const maxPerKeyword = (body.maxPerKeyword as number) || 50;
+    const keywordCount = (body.keywordCount as number) || 5;
+    const maxPerKeyword = (body.maxPerKeyword as number) || 30;
 
-    const results = await crawlBusinesses(keywords, maxPerKeyword);
+    const results = await crawlLite(keywordCount, maxPerKeyword);
 
     if (results.length === 0) {
       return NextResponse.json({ message: "수집된 업체가 없습니다.", count: 0 });
@@ -27,12 +27,10 @@ export async function POST(req: NextRequest) {
       classified.push(...categories);
     }
 
-    // 분류 결과 매핑
     const categoryMap = new Map(
       classified.map((c) => [c.name, c.classifiedCategory])
     );
 
-    // Supabase에 저장
     const supabase = getServiceClient();
     const toInsert = results.map((biz) => ({
       name: biz.name,
@@ -49,7 +47,7 @@ export async function POST(req: NextRequest) {
 
     const { data, error } = await supabase
       .from("businesses")
-      .upsert(toInsert, { onConflict: "name" })
+      .insert(toInsert)
       .select();
 
     if (error) {

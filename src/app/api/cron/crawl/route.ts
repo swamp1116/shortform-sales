@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { crawlLite } from "@/lib/crawler-lite";
 import { getServiceClient } from "@/lib/supabase";
 
-export const maxDuration = 300; // Vercel Pro: 최대 5분
+export const maxDuration = 60;
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
