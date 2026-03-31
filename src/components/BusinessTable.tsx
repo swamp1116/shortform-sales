@@ -153,7 +153,7 @@ export default function BusinessTable({
                     title={biz.email ? "선택" : "이메일 없음"}
                   />
                 </td>
-                <td className="px-4 py-3 font-medium">
+                <td className="px-4 py-3 font-semibold text-gray-900">
                   <div className="flex items-center gap-1">
                     {biz.name}
                     {biz.website && (
