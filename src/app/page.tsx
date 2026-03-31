@@ -27,14 +27,17 @@ export default function Dashboard() {
   const [page, setPage] = useState(1);
   const [sending, setSending] = useState(false);
   const [tab, setTab] = useState<"overview" | "businesses">("overview");
+  const [filterEmail, setFilterEmail] = useState(false);
 
   const fetchStats = useCallback(async () => {
     const res = await fetch("/api/analyze");
     if (res.ok) setStats(await res.json());
   }, []);
 
-  const fetchBusinesses = useCallback(async (p: number) => {
-    const res = await fetch(`/api/businesses?page=${p}&limit=50`);
+  const fetchBusinesses = useCallback(async (p: number, emailOnly?: boolean) => {
+    const params = new URLSearchParams({ page: String(p), limit: "50" });
+    if (emailOnly) params.set("emailOnly", "true");
+    const res = await fetch(`/api/businesses?${params}`);
     if (res.ok) {
       const data = await res.json();
       setBusinesses(data.data || []);
@@ -44,12 +47,18 @@ export default function Dashboard() {
 
   useEffect(() => {
     fetchStats();
-    fetchBusinesses(1);
-  }, [fetchStats, fetchBusinesses]);
+    fetchBusinesses(1, filterEmail);
+  }, [fetchStats, fetchBusinesses, filterEmail]);
 
   const handlePageChange = (p: number) => {
     setPage(p);
-    fetchBusinesses(p);
+    fetchBusinesses(p, filterEmail);
+  };
+
+  const handleFilterEmailChange = (v: boolean) => {
+    setFilterEmail(v);
+    setPage(1);
+    fetchBusinesses(1, v);
   };
 
   const handleSendEmail = async (ids: string[]) => {
@@ -64,6 +73,7 @@ export default function Dashboard() {
       const data = await res.json();
       alert(data.message || "발송 완료");
       fetchStats();
+      fetchBusinesses(page, filterEmail);
     } catch {
       alert("발송 중 오류 발생");
     } finally {
@@ -138,6 +148,8 @@ export default function Dashboard() {
             onPageChange={handlePageChange}
             onSendEmail={handleSendEmail}
             sending={sending}
+            filterEmail={filterEmail}
+            onFilterEmailChange={handleFilterEmailChange}
           />
         )}
       </main>

@@ -4,7 +4,7 @@ import { generateSalesEmail } from "@/lib/claude";
 import { sendEmail } from "@/lib/email";
 import type { Business } from "@/lib/supabase";
 
-export const maxDuration = 120;
+export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
   try {
@@ -13,12 +13,11 @@ export async function POST(req: NextRequest) {
 
     const supabase = getServiceClient();
 
-    // 대상 업체 조회
+    // 대상 업체 조회 (이메일이 있는 업체만)
     let query = supabase
       .from("businesses")
       .select("*")
-      .not("email", "is", null)
-      .eq("email_verified", true);
+      .not("email", "is", null);
 
     if (businessIds && businessIds.length > 0) {
       query = query.in("id", businessIds);

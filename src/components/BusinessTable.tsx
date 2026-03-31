@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { Business } from "@/lib/supabase";
-import { ExternalLink, Mail } from "lucide-react";
+import { ExternalLink, Mail, Send, Loader2 } from "lucide-react";
 
 type Props = {
   businesses: Business[];
@@ -11,6 +11,8 @@ type Props = {
   onPageChange: (page: number) => void;
   onSendEmail: (ids: string[]) => void;
   sending: boolean;
+  filterEmail: boolean;
+  onFilterEmailChange: (v: boolean) => void;
 };
 
 export default function BusinessTable({
@@ -20,10 +22,17 @@ export default function BusinessTable({
   onPageChange,
   onSendEmail,
   sending,
+  filterEmail,
+  onFilterEmailChange,
 }: Props) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const limit = 50;
   const totalPages = Math.ceil(total / limit);
+
+  const emailBusinesses = businesses.filter((b) => b.email);
+  const selectedWithEmail = Array.from(selected).filter((id) =>
+    businesses.find((b) => b.id === id && b.email)
+  );
 
   const toggleSelect = (id: string) => {
     setSelected((prev) => {
@@ -34,24 +43,58 @@ export default function BusinessTable({
     });
   };
 
-  const toggleAll = () => {
-    if (selected.size === businesses.length) {
-      setSelected(new Set());
+  const toggleAllWithEmail = () => {
+    const emailIds = emailBusinesses.map((b) => b.id);
+    const allSelected = emailIds.every((id) => selected.has(id));
+    if (allSelected) {
+      setSelected((prev) => {
+        const next = new Set(prev);
+        emailIds.forEach((id) => next.delete(id));
+        return next;
+      });
     } else {
-      setSelected(new Set(businesses.map((b) => b.id)));
+      setSelected((prev) => {
+        const next = new Set(prev);
+        emailIds.forEach((id) => next.add(id));
+        return next;
+      });
     }
+  };
+
+  const handleSend = () => {
+    if (selectedWithEmail.length === 0) return;
+    onSendEmail(selectedWithEmail);
+    setSelected(new Set());
   };
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-100">
       <div className="p-4 border-b border-gray-100 flex items-center justify-between">
-        <h2 className="text-lg font-semibold">업체 목록 ({total}개)</h2>
+        <div className="flex items-center gap-4">
+          <h2 className="text-lg font-semibold">업체 목록 ({total}개)</h2>
+          <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={filterEmail}
+              onChange={(e) => onFilterEmailChange(e.target.checked)}
+              className="rounded"
+            />
+            이메일 있는 업체만
+          </label>
+        </div>
         <button
-          onClick={() => onSendEmail(Array.from(selected))}
-          disabled={selected.size === 0 || sending}
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed hover:bg-blue-700 transition"
+          onClick={handleSend}
+          disabled={selectedWithEmail.length === 0 || sending}
+          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed hover:bg-blue-700 transition"
         >
-          {sending ? "발송 중..." : `선택 발송 (${selected.size})`}
+          {sending ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : (
+            <Send className="w-4 h-4" />
+          )}
+          {sending
+            ? "AI 이메일 생성 & 발송 중..."
+            : `선택 발송 (${selectedWithEmail.length})`}
         </button>
       </div>
 
@@ -62,12 +105,14 @@ export default function BusinessTable({
               <th className="px-4 py-3 text-left">
                 <input
                   type="checkbox"
-                  onChange={toggleAll}
+                  onChange={toggleAllWithEmail}
                   checked={
-                    selected.size === businesses.length &&
-                    businesses.length > 0
+                    emailBusinesses.length > 0 &&
+                    emailBusinesses.every((b) => selected.has(b.id))
                   }
+                  disabled={emailBusinesses.length === 0}
                   className="rounded"
+                  title="이메일 있는 업체 전체 선택"
                 />
               </th>
               <th className="px-4 py-3 text-left font-medium text-gray-600">
@@ -92,13 +137,20 @@ export default function BusinessTable({
           </thead>
           <tbody className="divide-y divide-gray-50">
             {businesses.map((biz) => (
-              <tr key={biz.id} className="hover:bg-gray-50 transition">
+              <tr
+                key={biz.id}
+                className={`hover:bg-gray-50 transition ${
+                  !biz.email ? "opacity-50" : ""
+                }`}
+              >
                 <td className="px-4 py-3">
                   <input
                     type="checkbox"
                     checked={selected.has(biz.id)}
                     onChange={() => toggleSelect(biz.id)}
+                    disabled={!biz.email}
                     className="rounded"
+                    title={biz.email ? "선택" : "이메일 없음"}
                   />
                 </td>
                 <td className="px-4 py-3 font-medium">
