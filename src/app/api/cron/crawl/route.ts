@@ -5,27 +5,37 @@ import { getServiceClient } from "@/lib/supabase";
 export const maxDuration = 60;
 export const dynamic = "force-dynamic";
 
-export async function GET(req: NextRequest) {
-  // Vercel Cron 인증: x-vercel-cron-signature 또는 Authorization 헤더
+function isAuthorized(req: NextRequest): boolean {
+  // 1. Vercel Cron은 내부 네트워크에서 호출되므로 user-agent로 식별
+  const ua = req.headers.get("user-agent") || "";
+  if (ua.includes("vercel-cron")) return true;
+
+  // 2. CRON_SECRET이 설정된 경우 Authorization 헤더 확인
   const cronSecret = process.env.CRON_SECRET;
   if (cronSecret) {
     const authHeader = req.headers.get("authorization");
-    if (authHeader !== `Bearer ${cronSecret}`) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    if (authHeader === `Bearer ${cronSecret}`) return true;
+  }
+
+  // 3. CRON_SECRET이 미설정이면 모든 요청 허용 (개발 편의)
+  if (!process.env.CRON_SECRET) return true;
+
+  return false;
+}
+
+export async function GET(req: NextRequest) {
+  if (!isAuthorized(req)) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const supabase = getServiceClient();
 
   try {
-    // 기존 업체명 조회 (중복 방지)
     const { data: existing } = await supabase.from("businesses").select("name");
     const existingNames = new Set(existing?.map((b) => b.name) || []);
 
-    // 60초 제한: fast 모드로 키워드 5개 × 30개 (상세 조회 생략)
     const results = await crawlLite(5, 30, (msg) => console.log(msg), { fast: true });
 
-    // 중복 제거
     const newResults = results.filter((biz) => !existingNames.has(biz.name));
 
     if (newResults.length === 0) {
@@ -36,7 +46,6 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    // Supabase 저장
     const toInsert = newResults.map((biz) => ({
       name: biz.name,
       category: biz.category,
