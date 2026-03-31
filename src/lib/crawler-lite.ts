@@ -1,6 +1,6 @@
 /**
  * Vercel 서버리스용 경량 크롤러
- * Playwright 대신 네이버 내부 API를 fetch로 호출
+ * 네이버 통합검색 HTML에서 업체 데이터 파싱
  */
 
 export type CrawledBusiness = {
@@ -35,6 +35,12 @@ const KEYWORDS = [
   "서울 안경점", "서울 세탁소",
 ];
 
+const HEADERS = {
+  "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+  "Accept": "text/html,application/xhtml+xml",
+  "Accept-Language": "ko-KR,ko;q=0.9",
+};
+
 function extractEmail(text: string): string | null {
   const matches = text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g);
   if (!matches) return null;
@@ -49,75 +55,81 @@ function extractEmail(text: string): string | null {
   return filtered.length > 0 ? filtered[0] : null;
 }
 
-const HEADERS = {
-  "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-  "Accept": "application/json, text/plain, */*",
-  "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
-  "Referer": "https://map.naver.com/",
-};
+interface PlaceData {
+  name: string;
+  category: string;
+  address: string;
+  roadAddress: string;
+  phone: string | null;
+  virtualPhone: string | null;
+  homePage: string | null;
+  id: string;
+}
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function searchPlaces(keyword: string, start: number = 1, display: number = 50): Promise<Record<string, any>[]> {
+function parsePlacesFromHtml(html: string): PlaceData[] {
+  const places: PlaceData[] = [];
+
+  // JSON 내 업체 데이터 패턴 매칭
+  const namePattern = /"name":"([^"]+)","businessCategory":"[^"]*","category":"([^"]*)","description":[^,]*,"hasBooking":[^,]*,"hasNPay":[^,]*,"x":"[^"]*","y":"[^"]*","distance":"[^"]*","imageUrl":[^,]*,"imageCount":[^,]*,"phone":(null|"([^"]*)"|null),"virtualPhone":(null|"([^"]*)")/g;
+
+  let match;
+  while ((match = namePattern.exec(html)) !== null) {
+    places.push({
+      name: match[1],
+      category: match[2],
+      address: "",
+      roadAddress: "",
+      phone: match[4] || null,
+      virtualPhone: match[6] || null,
+      homePage: null,
+      id: "",
+    });
+  }
+
+  // 주소 추출 (별도 패턴)
+  const addresses = html.match(/"address":"([^"]+)"/g) || [];
+  const roadAddresses = html.match(/"roadAddress":"([^"]+)"/g) || [];
+
+  // 업체명과 연관된 주소 매핑 (순서 기반)
+  // 처음 몇 개는 지역 주소이므로 skip
+  const bizAddresses = addresses
+    .map(a => a.replace(/"address":"/, "").replace(/"$/, ""))
+    .filter(a => !a.includes("특별시") && !a.includes("광역시") && a.length < 50);
+
+  const bizRoadAddresses = roadAddresses
+    .map(a => a.replace(/"roadAddress":"/, "").replace(/"$/, ""))
+    .filter(a => a.length < 80);
+
+  for (let i = 0; i < places.length; i++) {
+    if (i < bizAddresses.length) places[i].address = bizAddresses[i];
+    if (i < bizRoadAddresses.length) places[i].roadAddress = bizRoadAddresses[i];
+  }
+
+  return places;
+}
+
+async function searchNaver(keyword: string): Promise<CrawledBusiness[]> {
   try {
-    const url = `https://map.naver.com/p/api/search/allSearch?query=${encodeURIComponent(keyword)}&type=all&searchCoord=126.9783882%3B37.5666103&page=${start}&displayCount=${display}&isPlaceRecommendationReplace=true&lang=ko`;
-
+    const url = `https://search.naver.com/search.naver?where=nexearch&query=${encodeURIComponent(keyword)}`;
     const res = await fetch(url, { headers: HEADERS });
     if (!res.ok) return [];
 
-    const data = await res.json();
-    const placeList = data?.result?.place?.list || [];
-    return placeList;
+    const html = await res.text();
+    const places = parsePlacesFromHtml(html);
+
+    return places.map(p => ({
+      name: p.name,
+      category: p.category,
+      address: p.roadAddress || p.address,
+      phone: p.virtualPhone || p.phone || "",
+      website: p.homePage,
+      instagram: null,
+      youtube: null,
+      email: extractEmail(html),
+    }));
   } catch {
     return [];
   }
-}
-
-async function getPlaceDetail(placeId: string): Promise<{
-  phone: string; website: string | null; instagram: string | null;
-  youtube: string | null; email: string | null;
-}> {
-  const result = { phone: "", website: null as string | null, instagram: null as string | null, youtube: null as string | null, email: null as string | null };
-
-  try {
-    const url = `https://pcmap.place.naver.com/place/${placeId}/home?entry=bmp`;
-    const res = await fetch(url, {
-      headers: { ...HEADERS, "Accept": "text/html" },
-    });
-    if (!res.ok) return result;
-
-    const html = await res.text();
-
-    // 전화번호
-    const phoneMatch = html.match(/"phone":"([^"]+)"/);
-    if (phoneMatch) result.phone = phoneMatch[1];
-
-    // 홈페이지, SNS
-    const urlMatches = html.match(/https?:\/\/[^\s"<>]+/g) || [];
-    for (const link of urlMatches) {
-      if (link.includes("instagram.com/") && !result.instagram) {
-        result.instagram = link.split('"')[0].split("?")[0];
-      } else if ((link.includes("youtube.com/") || link.includes("youtu.be/")) && !result.youtube) {
-        result.youtube = link.split('"')[0];
-      } else if (
-        !result.website &&
-        !link.includes("naver.com") && !link.includes("instagram.com") &&
-        !link.includes("youtube.com") && !link.includes("facebook.com") &&
-        !link.includes("google.com") && !link.includes("apple.com") &&
-        !link.includes("play.google") && !link.includes(".naver.") &&
-        !link.includes("pstatic.net") && !link.includes("ssl.") &&
-        link.match(/^https?:\/\/[a-zA-Z0-9]/)
-      ) {
-        result.website = link.split('"')[0];
-      }
-    }
-
-    // 이메일
-    result.email = extractEmail(html);
-  } catch {
-    // 상세 페이지 실패해도 계속
-  }
-
-  return result;
 }
 
 export async function crawlLite(
@@ -126,9 +138,7 @@ export async function crawlLite(
   onProgress?: (msg: string) => void,
   options?: { fast?: boolean }
 ): Promise<CrawledBusiness[]> {
-  const fast = options?.fast ?? false;
-
-  // 랜덤 키워드 선택 (매번 다른 키워드 조합)
+  // 랜덤 키워드 선택
   const shuffled = [...KEYWORDS].sort(() => Math.random() - 0.5);
   const selectedKeywords = shuffled.slice(0, keywordCount);
 
@@ -138,48 +148,19 @@ export async function crawlLite(
   for (const keyword of selectedKeywords) {
     onProgress?.(`크롤링: ${keyword}`);
 
-    const places = await searchPlaces(keyword, 1, maxPerKeyword);
+    const places = await searchNaver(keyword);
 
     for (const place of places) {
-      const name = place.name || place.title || "";
-      if (!name || seenNames.has(name)) continue;
-      seenNames.add(name);
-
-      if (fast) {
-        // fast 모드: 검색 API 결과만 사용 (상세 페이지 조회 생략)
-        allResults.push({
-          name,
-          category: place.category || place.categoryName || "",
-          address: place.address || place.roadAddress || "",
-          phone: place.tel || place.phone || "",
-          website: place.homepage || null,
-          instagram: null,
-          youtube: null,
-          email: null,
-        });
-      } else {
-        const detail = await getPlaceDetail(place.id);
-
-        allResults.push({
-          name,
-          category: place.category || place.categoryName || "",
-          address: place.address || place.roadAddress || "",
-          phone: detail.phone || place.tel || "",
-          website: detail.website,
-          instagram: detail.instagram,
-          youtube: detail.youtube,
-          email: detail.email,
-        });
-
-        // 상세 페이지 간 짧은 딜레이
-        await new Promise(r => setTimeout(r, 200 + Math.random() * 300));
-      }
+      if (!place.name || seenNames.has(place.name)) continue;
+      seenNames.add(place.name);
+      allResults.push(place);
+      if (allResults.length >= keywordCount * maxPerKeyword) break;
     }
 
     onProgress?.(`${keyword}: ${places.length}개 → 누적 ${allResults.length}개`);
 
     // 키워드 간 딜레이
-    await new Promise(r => setTimeout(r, fast ? 300 : 500 + Math.random() * 1000));
+    await new Promise(r => setTimeout(r, options?.fast ? 300 : 800));
   }
 
   return allResults;
