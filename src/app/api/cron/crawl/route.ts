@@ -6,10 +6,13 @@ export const maxDuration = 60;
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
-  // Vercel Cron 인증 확인
-  const authHeader = req.headers.get("authorization");
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  // Vercel Cron 인증: x-vercel-cron-signature 또는 Authorization 헤더
+  const cronSecret = process.env.CRON_SECRET;
+  if (cronSecret) {
+    const authHeader = req.headers.get("authorization");
+    if (authHeader !== `Bearer ${cronSecret}`) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
   }
 
   const supabase = getServiceClient();
@@ -19,8 +22,8 @@ export async function GET(req: NextRequest) {
     const { data: existing } = await supabase.from("businesses").select("name");
     const existingNames = new Set(existing?.map((b) => b.name) || []);
 
-    // 크롤링 (매 실행마다 랜덤 10개 키워드 × 30개)
-    const results = await crawlLite(10, 30, (msg) => console.log(msg));
+    // 60초 제한: fast 모드로 키워드 5개 × 30개 (상세 조회 생략)
+    const results = await crawlLite(5, 30, (msg) => console.log(msg), { fast: true });
 
     // 중복 제거
     const newResults = results.filter((biz) => !existingNames.has(biz.name));
@@ -60,13 +63,12 @@ export async function GET(req: NextRequest) {
       if (!error && data) savedCount += data.length;
     }
 
-    // 총 업체 수 확인
     const { count } = await supabase
       .from("businesses")
       .select("*", { count: "exact", head: true });
 
     return NextResponse.json({
-      message: `크롤링 완료`,
+      message: "크롤링 완료",
       crawled: results.length,
       new: newResults.length,
       saved: savedCount,

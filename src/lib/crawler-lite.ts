@@ -123,8 +123,11 @@ async function getPlaceDetail(placeId: string): Promise<{
 export async function crawlLite(
   keywordCount: number = 5,
   maxPerKeyword: number = 30,
-  onProgress?: (msg: string) => void
+  onProgress?: (msg: string) => void,
+  options?: { fast?: boolean }
 ): Promise<CrawledBusiness[]> {
+  const fast = options?.fast ?? false;
+
   // 랜덤 키워드 선택 (매번 다른 키워드 조합)
   const shuffled = [...KEYWORDS].sort(() => Math.random() - 0.5);
   const selectedKeywords = shuffled.slice(0, keywordCount);
@@ -142,27 +145,41 @@ export async function crawlLite(
       if (!name || seenNames.has(name)) continue;
       seenNames.add(name);
 
-      const detail = await getPlaceDetail(place.id);
+      if (fast) {
+        // fast 모드: 검색 API 결과만 사용 (상세 페이지 조회 생략)
+        allResults.push({
+          name,
+          category: place.category || place.categoryName || "",
+          address: place.address || place.roadAddress || "",
+          phone: place.tel || place.phone || "",
+          website: place.homepage || null,
+          instagram: null,
+          youtube: null,
+          email: null,
+        });
+      } else {
+        const detail = await getPlaceDetail(place.id);
 
-      allResults.push({
-        name,
-        category: place.category || place.categoryName || "",
-        address: place.address || place.roadAddress || "",
-        phone: detail.phone || place.tel || "",
-        website: detail.website,
-        instagram: detail.instagram,
-        youtube: detail.youtube,
-        email: detail.email,
-      });
+        allResults.push({
+          name,
+          category: place.category || place.categoryName || "",
+          address: place.address || place.roadAddress || "",
+          phone: detail.phone || place.tel || "",
+          website: detail.website,
+          instagram: detail.instagram,
+          youtube: detail.youtube,
+          email: detail.email,
+        });
 
-      // 상세 페이지 간 짧은 딜레이
-      await new Promise(r => setTimeout(r, 200 + Math.random() * 300));
+        // 상세 페이지 간 짧은 딜레이
+        await new Promise(r => setTimeout(r, 200 + Math.random() * 300));
+      }
     }
 
     onProgress?.(`${keyword}: ${places.length}개 → 누적 ${allResults.length}개`);
 
     // 키워드 간 딜레이
-    await new Promise(r => setTimeout(r, 500 + Math.random() * 1000));
+    await new Promise(r => setTimeout(r, fast ? 300 : 500 + Math.random() * 1000));
   }
 
   return allResults;
