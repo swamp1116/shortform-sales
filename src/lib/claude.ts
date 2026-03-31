@@ -79,3 +79,42 @@ JSON으로만 응답:
   }
   return JSON.parse(jsonMatch[0]);
 }
+
+export async function generateDmMessage(
+  business: { name: string; category: string; instagram: string | null }
+): Promise<string> {
+  const message = await client.messages.create({
+    model: "claude-sonnet-4-6",
+    max_tokens: 800,
+    messages: [
+      {
+        role: "user",
+        content: `당신은 숏폼 콘텐츠 제작 대행사의 영업 담당자입니다.
+인스타그램 DM으로 보낼 영업 메시지를 작성해주세요.
+
+업체 정보:
+- 업체명: ${business.name}
+- 업종: ${business.category}
+- 인스타그램: ${business.instagram || "있음"}
+
+작성 규칙:
+1. "안녕하세요! ${business.name} 계정 보다가 연락드려요 :)" 로 시작
+2. 해당 업종에서 숏폼/릴스 콘텐츠가 왜 중요한지 자연스럽게 언급
+3. 릴스/숏폼이 없거나 부족해 보인다면 부드럽게 제안
+4. 저희 숏폼 제작 서비스를 가볍게 소개 (강요 금지)
+5. 무료 샘플 영상 1개 제작 제안
+6. 간단한 미팅/통화 제안으로 마무리
+7. 500자 이내
+8. 친근하고 자연스러운 말투 (스팸 느낌 절대 금지)
+9. 이모지 적절히 사용
+10. 줄바꿈으로 가독성 좋게
+
+DM 메시지만 출력하세요. JSON이나 다른 포맷 없이 순수 텍스트만:`,
+      },
+    ],
+  });
+
+  return message.content[0].type === "text"
+    ? message.content[0].text.trim()
+    : "";
+}

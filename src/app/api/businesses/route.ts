@@ -8,6 +8,7 @@ export async function GET(req: NextRequest) {
   const limit = parseInt(url.searchParams.get("limit") || "50");
   const category = url.searchParams.get("category");
   const emailOnly = url.searchParams.get("emailOnly") === "true";
+  const instagramOnly = url.searchParams.get("instagramOnly") === "true";
 
   let query = supabase
     .from("businesses")
@@ -20,6 +21,9 @@ export async function GET(req: NextRequest) {
   }
   if (emailOnly) {
     query = query.not("email", "is", null);
+  }
+  if (instagramOnly) {
+    query = query.not("instagram", "is", null);
   }
 
   const { data, count, error } = await query;

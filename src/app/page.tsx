@@ -18,6 +18,7 @@ type Stats = {
     contracted: number;
   };
   categoryCount: Record<string, number>;
+  dmStats?: { total: number; pending: number; sent: number; replied: number };
 };
 
 export default function Dashboard() {
@@ -28,37 +29,48 @@ export default function Dashboard() {
   const [sending, setSending] = useState(false);
   const [tab, setTab] = useState<"overview" | "businesses">("overview");
   const [filterEmail, setFilterEmail] = useState(false);
+  const [filterInstagram, setFilterInstagram] = useState(true);
 
   const fetchStats = useCallback(async () => {
     const res = await fetch("/api/analyze");
     if (res.ok) setStats(await res.json());
   }, []);
 
-  const fetchBusinesses = useCallback(async (p: number, emailOnly?: boolean) => {
-    const params = new URLSearchParams({ page: String(p), limit: "50" });
-    if (emailOnly) params.set("emailOnly", "true");
-    const res = await fetch(`/api/businesses?${params}`);
-    if (res.ok) {
-      const data = await res.json();
-      setBusinesses(data.data || []);
-      setTotal(data.total || 0);
-    }
-  }, []);
+  const fetchBusinesses = useCallback(
+    async (p: number, emailOnly?: boolean, igOnly?: boolean) => {
+      const params = new URLSearchParams({ page: String(p), limit: "50" });
+      if (emailOnly) params.set("emailOnly", "true");
+      if (igOnly) params.set("instagramOnly", "true");
+      const res = await fetch(`/api/businesses?${params}`);
+      if (res.ok) {
+        const data = await res.json();
+        setBusinesses(data.data || []);
+        setTotal(data.total || 0);
+      }
+    },
+    []
+  );
 
   useEffect(() => {
     fetchStats();
-    fetchBusinesses(1, filterEmail);
-  }, [fetchStats, fetchBusinesses, filterEmail]);
+    fetchBusinesses(1, filterEmail, filterInstagram);
+  }, [fetchStats, fetchBusinesses, filterEmail, filterInstagram]);
 
   const handlePageChange = (p: number) => {
     setPage(p);
-    fetchBusinesses(p, filterEmail);
+    fetchBusinesses(p, filterEmail, filterInstagram);
   };
 
   const handleFilterEmailChange = (v: boolean) => {
     setFilterEmail(v);
     setPage(1);
-    fetchBusinesses(1, v);
+    fetchBusinesses(1, v, filterInstagram);
+  };
+
+  const handleFilterInstagramChange = (v: boolean) => {
+    setFilterInstagram(v);
+    setPage(1);
+    fetchBusinesses(1, filterEmail, v);
   };
 
   const handleSendEmail = async (ids: string[]) => {
@@ -73,7 +85,7 @@ export default function Dashboard() {
       const data = await res.json();
       alert(data.message || "발송 완료");
       fetchStats();
-      fetchBusinesses(page, filterEmail);
+      fetchBusinesses(page, filterEmail, filterInstagram);
     } catch {
       alert("발송 중 오류 발생");
     } finally {
@@ -81,15 +93,27 @@ export default function Dashboard() {
     }
   };
 
+  const handleDmStatusChange = async (
+    id: string,
+    status: "sent" | "replied"
+  ) => {
+    await fetch("/api/dm/status", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ businessId: id, status }),
+    });
+    fetchBusinesses(page, filterEmail, filterInstagram);
+    fetchStats();
+  };
+
   const handleCrawlComplete = () => {
     fetchStats();
-    fetchBusinesses(1);
+    fetchBusinesses(1, filterEmail, filterInstagram);
     setPage(1);
   };
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
       <header className="bg-white border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
           <div>
@@ -97,14 +121,13 @@ export default function Dashboard() {
               숏폼 영업 자동화
             </h1>
             <p className="text-sm text-gray-500">
-              서울 지역 업체 크롤링 & 맞춤 영업이메일 발송
+              서울 지역 업체 크롤링 & 인스타 DM 영업
             </p>
           </div>
           <CrawlButton onComplete={handleCrawlComplete} />
         </div>
       </header>
 
-      {/* Tabs */}
       <div className="max-w-7xl mx-auto px-6 mt-4">
         <div className="flex gap-1 bg-gray-100 rounded-lg p-1 w-fit">
           <button
@@ -130,7 +153,6 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Content */}
       <main className="max-w-7xl mx-auto px-6 py-6 space-y-6">
         {tab === "overview" ? (
           <>
@@ -150,6 +172,9 @@ export default function Dashboard() {
             sending={sending}
             filterEmail={filterEmail}
             onFilterEmailChange={handleFilterEmailChange}
+            onDmStatusChange={handleDmStatusChange}
+            filterInstagram={filterInstagram}
+            onFilterInstagramChange={handleFilterInstagramChange}
           />
         )}
       </main>

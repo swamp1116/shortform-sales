@@ -12,6 +12,8 @@ export type Business = {
   youtube: string | null;
   email: string | null;
   email_verified: boolean;
+  dm_message: string | null;
+  dm_status: "pending" | "sent" | "replied";
   created_at: string;
 };
 

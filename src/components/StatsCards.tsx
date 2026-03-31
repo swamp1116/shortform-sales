@@ -1,6 +1,6 @@
 "use client";
 
-import { Building2, Mail, Send, Users } from "lucide-react";
+import { Building2, Send, Users, MessageCircle } from "lucide-react";
 
 type Stats = {
   totalBusinesses: number;
@@ -11,6 +11,7 @@ type Stats = {
     meeting: number;
     contracted: number;
   };
+  dmStats?: { total: number; pending: number; sent: number; replied: number };
 };
 
 export default function StatsCards({ stats }: { stats: Stats | null }) {
@@ -24,20 +25,23 @@ export default function StatsCards({ stats }: { stats: Stats | null }) {
       color: "bg-blue-500",
     },
     {
-      title: "발송 완료",
+      title: "DM 발송완료",
+      value: (stats.dmStats?.sent || 0).toLocaleString(),
+      sub: `대기 ${stats.dmStats?.pending || 0} | 답장 ${stats.dmStats?.replied || 0}`,
+      icon: MessageCircle,
+      color: "bg-pink-500",
+    },
+    {
+      title: "이메일 발송",
       value: stats.emailStats.sent.toLocaleString(),
       icon: Send,
       color: "bg-green-500",
     },
     {
-      title: "발송 대기",
-      value: stats.emailStats.pending.toLocaleString(),
-      icon: Mail,
-      color: "bg-yellow-500",
-    },
-    {
-      title: "계약 전환",
-      value: stats.crmStats.contracted.toLocaleString(),
+      title: "답장/계약",
+      value: (
+        (stats.dmStats?.replied || 0) + stats.crmStats.contracted
+      ).toLocaleString(),
       icon: Users,
       color: "bg-purple-500",
     },
@@ -54,6 +58,9 @@ export default function StatsCards({ stats }: { stats: Stats | null }) {
             <div>
               <p className="text-sm text-gray-500">{card.title}</p>
               <p className="text-3xl font-bold mt-1">{card.value}</p>
+              {"sub" in card && card.sub && (
+                <p className="text-xs text-gray-400 mt-1">{card.sub}</p>
+              )}
             </div>
             <div className={`${card.color} p-3 rounded-lg`}>
               <card.icon className="w-6 h-6 text-white" />
